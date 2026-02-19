@@ -180,7 +180,7 @@ public struct DataItem has key, store {
     content: string::String,
     sequence_index: u128,
     external_index: u128,
-    reference: ID,
+    reference: Option<ID>,
 
     // Verification tracking
     verification_success_addresses: vector<address>,
@@ -214,7 +214,7 @@ public struct DataItemVerification has key, store {
     external_index: u128,
 
     // Target reference
-    reference: ID,
+    reference: Option<ID>,
 
     // Verification result
     verified: bool,
@@ -331,7 +331,7 @@ public struct DataItemPublishedEvent has copy, drop {
     content: string::String,
     sequence_index: u128,
     external_index: u128,
-    reference: ID,
+    reference: Option<ID>,
 
     verification_success_addresses: vector<address>,
     verification_failure_addresses: vector<address>,
@@ -354,7 +354,7 @@ public struct DataItemVerificationPublishedEvent has copy, drop {
     content: string::String,
     sequence_index: u128,
     external_index: u128,
-    reference: ID,
+    reference: Option<ID>,
     verified: bool,
     prev_data_item_verification_chain_id: Option<ID>,
     prev_id: Option<ID>,
@@ -897,7 +897,7 @@ public entry fun publish_data_item(
     description: string::String,
     content: string::String,
     external_index: u128,
-    reference: &DataItem,
+    reference: Option<ID>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -909,7 +909,6 @@ public entry fun publish_data_item(
     assert!(data_type.container_id == container_id, E_INVALID_DATATYPE);
 
     let data_type_id = object::id(data_type);
-    let data_item_id_reference = object::id(reference);
     let next_index = add_with_wrap(container.last_data_item_index, 1);
     let creator_addr = sender(ctx);
     let creator_timestamp_ms = clock.timestamp_ms();
@@ -935,7 +934,7 @@ public entry fun publish_data_item(
         content: content,
         sequence_index: next_index,
         external_index: external_index,
-        reference: data_item_id_reference,
+        reference: reference,
         
         // verification fields
         verification_success_addresses: vector::empty<address>(),
@@ -1003,7 +1002,7 @@ public entry fun publish_data_item_verification(
     description: string::String,
     content: string::String,
     external_index: u128,
-    reference: &DataItem,
+    reference: Option<ID>,
     verified: bool,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -1015,7 +1014,6 @@ public entry fun publish_data_item_verification(
     let sender_addr = sender(ctx);
     let container_id = object::id(container);
     let data_item_id = object::id(data_item);
-    let data_item_id_reference = object::id(reference);
 
     assert!(data_item.container_id == container_id, E_INVALID_DATAITEM);
 
@@ -1069,7 +1067,7 @@ public entry fun publish_data_item_verification(
         content: content,
         sequence_index: next_index,
         external_index: external_index,
-        reference: data_item_id_reference,
+        reference: reference,
         verified: verified,
         prev_data_item_verification_chain_id:
             verification_chain.last_data_item_verification_id,

@@ -1,4 +1,3 @@
-
 module sendit_messenger::generic_store;
 
 use iota::clock::Clock;
@@ -898,7 +897,7 @@ public entry fun publish_data_item(
     description: string::String,
     content: string::String,
     external_index: u128,
-    reference: ID,
+    reference: &DataItem,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -910,6 +909,7 @@ public entry fun publish_data_item(
     assert!(data_type.container_id == container_id, E_INVALID_DATATYPE);
 
     let data_type_id = object::id(data_type);
+    let data_item_id_reference = object::id(reference);
     let next_index = add_with_wrap(container.last_data_item_index, 1);
     let creator_addr = sender(ctx);
     let creator_timestamp_ms = clock.timestamp_ms();
@@ -935,7 +935,7 @@ public entry fun publish_data_item(
         content: content,
         sequence_index: next_index,
         external_index: external_index,
-        reference: reference,
+        reference: data_item_id_reference,
         
         // verification fields
         verification_success_addresses: vector::empty<address>(),
@@ -1003,7 +1003,7 @@ public entry fun publish_data_item_verification(
     description: string::String,
     content: string::String,
     external_index: u128,
-    reference: ID,
+    reference: &DataItem,
     verified: bool,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -1015,6 +1015,7 @@ public entry fun publish_data_item_verification(
     let sender_addr = sender(ctx);
     let container_id = object::id(container);
     let data_item_id = object::id(data_item);
+    let data_item_id_reference = object::id(reference);
 
     assert!(data_item.container_id == container_id, E_INVALID_DATAITEM);
 
@@ -1058,18 +1059,18 @@ public entry fun publish_data_item_verification(
     // --- create verification object ---
     let verification = DataItemVerification {
         id: object::new(ctx),
-        container_id,
-        data_item_id,
-        external_id,
-        creator,
+        container_id: container_id,
+        data_item_id: data_item_id,
+        external_id: external_id,
+        creator: creator,
         recipients: info_recipients,
-        name,
-        description,
-        content,
+        name: name,
+        description: description,
+        content: content,
         sequence_index: next_index,
-        external_index,
-        reference,
-        verified,
+        external_index: external_index,
+        reference: data_item_id_reference,
+        verified: verified,
         prev_data_item_verification_chain_id:
             verification_chain.last_data_item_verification_id,
         prev_id: container.last_data_item_verification_id,
@@ -1120,9 +1121,9 @@ public entry fun publish_data_item_verification(
 
         event::emit(DataItemVerificationPublishedEvent {
             object_id: verification_id,
-            container_id,
-            data_item_id,
-            external_id,
+            container_id: container_id,
+            data_item_id: data_item_id,
+            external_id: external_id,
             creator: creator_event,
             recipients: clone_vector_address(&verification.recipients),
             name: verification.name,

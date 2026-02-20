@@ -183,11 +183,11 @@ public struct DataItem has key, store {
     reference: Option<ID>,
 
     // Verification tracking
-    verification_success_addresses: vector<address>,
-    verification_failure_addresses: vector<address>,
+    verification_success_addresses: Option<vector<address>>,
+    verification_failure_addresses: Option<vector<address>>,
     verified: Option<bool>,
-verification_success_data_item: Option<ID>, 
-verification_failure_data_item: Option<ID>,
+verification_success_data_item: Option<vector<ID>>, 
+verification_failure_data_item: Option<vector<ID>>,
     prev_data_item_chain_id: Option<ID>,
     prev_id: Option<ID>,
     prev_data_type_item_id: Option<ID>,
@@ -205,7 +205,7 @@ public struct DataItemVerification has key, store {
 
     // Creator
     creator: Creator,
-    recipients: vector<address>,
+    recipients: Option<vector<address>>,
 
     // Metadata
     name: string::String,
@@ -334,9 +334,9 @@ public struct DataItemPublishedEvent has copy, drop {
     external_index: u128,
     reference: Option<ID>,
 
-    verification_success_addresses: vector<address>,
-    verification_failure_addresses: vector<address>,
-    verified: bool,
+    verification_success_addresses: Option<vector<address>>,
+    verification_failure_addresses: Option<vector<address>>,
+    verified: Option<bool>,
 
     prev_data_item_chain_id: Option<ID>,
     prev_id: Option<ID>,
@@ -349,7 +349,7 @@ public struct DataItemVerificationPublishedEvent has copy, drop {
     data_item_id: ID,
     external_id: string::String,
     creator: CreatorEvent,
-    recipients: vector<address>,
+    recipients: Option<vector<address>>,
     name: string::String,
     description: string::String,
     content: string::String,
@@ -938,8 +938,8 @@ public entry fun publish_data_item(
         reference: reference,
         
         // verification fields
-        verification_success_addresses: vector::empty<address>(),
-        verification_failure_addresses: vector::empty<address>(),
+        verification_success_addresses: option::none(),
+        verification_failure_addresses: option::none(),
         verified: option::none(),
 verification_success_data_item: option::none(), 
 verification_failure_data_item: option::none(),
@@ -1030,12 +1030,26 @@ public entry fun publish_data_item_verification(
         abort E_INVALID_VERIFICATION_SENDER
     };
 
-    // --- no double submission ---
-    assert!(
-        !vector::contains(&data_item.verification_success_addresses, &sender_addr)
-            && !vector::contains(&data_item.verification_failure_addresses, &sender_addr),
-        E_VERIFICATION_ALREADY_SUBMITTED
-    );
+   // --- no double submission ---
+let success_addresses_ref = if (option::is_some(&data_item.verification_success_addresses)) {
+    option::borrow(&data_item.verification_success_addresses)
+} else {
+    // empty vector if none
+    &vector::empty<address>()
+};
+
+let failure_addresses_ref = if (option::is_some(&data_item.verification_failure_addresses)) {
+    option::borrow(&data_item.verification_failure_addresses)
+} else {
+    &vector::empty<address>()
+};
+
+// check if sender has already submitted
+assert!(
+    !vector::contains(success_addresses_ref, &sender_addr)
+        && !vector::contains(failure_addresses_ref, &sender_addr),
+    E_VERIFICATION_ALREADY_SUBMITTED
+);
 
     let timestamp_ms = clock.timestamp_ms();
     let next_index =
@@ -1044,9 +1058,9 @@ public entry fun publish_data_item_verification(
     // --- informational recipients ---
     let info_recipients =
         if (option::is_some(&recipients)) {
-            clone_vector_address(option::borrow(&recipients))
+            option::some(clone_vector_address(option::borrow(&recipients)))
         } else {
-            vector::empty<address>()
+            option::none()
         };
 
     let creator = Creator {
@@ -1087,22 +1101,50 @@ public entry fun publish_data_item_verification(
     container.last_data_item_verification_id = verification_id_option;
 
 // --- update data item state --- 
- if (verified) { 
-    vector::push_back( &mut data_item.verification_success_addresses, sender_addr );
-     vector::push_back( &mut data_item.verification_success_data_item, verification_id ); }
-      else { 
-        vector::push_back( &mut data_item.verification_failure_addresses, sender_addr );
-         vector::push_back( &mut data_item.verification_failure_data_item, verification_id ); 
-         };
+
+// --- update data item state ---
+if (verified) {
+    if (!option::is_some(&data_item.verification_success_addresses)) {
+    data_item.verification_success_addresses = option::some(vector::empty<address>());
+};
+if (!option::is_some(&data_item.verification_success_data_item)) {
+    data_item.verification_success_data_item = option::some(vector::empty<ID>());
+};
+
+    let success_addresses = option::borrow_mut(&mut data_item.verification_success_addresses);
+    vector::push_back(success_addresses, sender_addr);
+
+    let success_data_items = option::borrow_mut(&mut data_item.verification_success_data_item);
+    vector::push_back(success_data_items, verification_id);
+} else {
+
+
+if (!option::is_some(&data_item.verification_failure_addresses)) {
+    data_item.verification_failure_addresses = option::some(vector::empty<address>());
+};
+
+
+if (!option::is_some(&data_item.verification_failure_data_item)) {
+    data_item.verification_failure_data_item = option::some(vector::empty<ID>());
+};
+    let failure_addresses = option::borrow_mut(&mut data_item.verification_failure_addresses);
+    vector::push_back(failure_addresses, sender_addr);
+
+    let failure_data_items = option::borrow_mut(&mut data_item.verification_failure_data_item);
+    vector::push_back(failure_data_items, verification_id);
+};
 
     // --- mark verified only if ALL recipients succeeded ---
-    if (option::is_some(&data_item.recipients)) {
-        let required =
-            vector::length(option::borrow(&data_item.recipients));
-        if (vector::length(&data_item.verification_success_addresses) >= required) {
-            data_item.verified = true;
-        };
+  if (option::is_some(&data_item.recipients)
+    && option::is_some(&data_item.verification_success_addresses)) {
+
+    let required = vector::length(option::borrow(&data_item.recipients));
+    let success_addresses = vector::length(option::borrow(&data_item.verification_success_addresses));
+
+    if (success_addresses >= required) {
+        data_item.verified = option::some(true);
     };
+};
 
     // --- event ---
     if (event_config_ref.event_publish) {
@@ -1119,7 +1161,7 @@ public entry fun publish_data_item_verification(
             data_item_id: data_item_id,
             external_id: external_id,
             creator: creator_event,
-            recipients: clone_vector_address(&verification.recipients),
+            recipients: option::some(clone_vector_address(option::borrow(&verification.recipients))),
             name: verification.name,
             description: verification.description,
             content: verification.content,

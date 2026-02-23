@@ -181,7 +181,7 @@ public struct DataItem has key, store {
     content: string::String,
     sequence_index: u128,
     external_index: u128,
-    reference: Option<ID>,
+    references: Option<vector<ID>>,
 
     // Verification tracking
     verification_success_addresses: Option<vector<address>>,
@@ -216,7 +216,7 @@ public struct DataItemVerification has key, store {
     external_index: u128,
 
     // Target reference
-    reference: Option<ID>,
+    references: Option<vector<ID>>,
 
     // Verification result
     verified: bool,
@@ -334,7 +334,7 @@ public struct DataItemPublishedEvent has copy, drop {
     content: string::String,
     sequence_index: u128,
     external_index: u128,
-    reference: Option<ID>,
+    references: Option<vector<ID>>,
 
     verification_success_addresses: Option<vector<address>>,
     verification_failure_addresses: Option<vector<address>>,
@@ -358,7 +358,7 @@ public struct DataItemVerificationPublishedEvent has copy, drop {
     content: string::String,
     sequence_index: u128,
     external_index: u128,
-    reference: Option<ID>,
+    references: Option<vector<ID>>,
     verified: bool,
     prev_data_item_verification_chain_id: Option<ID>,
     prev_id: Option<ID>,
@@ -904,7 +904,7 @@ public entry fun publish_data_item(
     description: string::String,
     content: string::String,
     external_index: u128,
-    reference: Option<ID>,
+    references: Option<vector<ID>>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -941,7 +941,7 @@ public entry fun publish_data_item(
         content: content,
         sequence_index: next_index,
         external_index: external_index,
-        reference: reference,
+        references: references,
         
         // verification fields
         verification_success_addresses: option::none(),
@@ -986,7 +986,7 @@ verification_failure_data_item: option::none(),
             content: data_item.content,
             sequence_index: data_item.sequence_index,
             external_index: data_item.external_index,
-            reference: data_item.reference,
+            references: data_item.references,
             verification_success_addresses: data_item.verification_success_addresses,
             verification_failure_addresses: data_item.verification_failure_addresses,
             verified: data_item.verified,
@@ -1012,7 +1012,7 @@ public entry fun publish_data_item_verification(
     description: string::String,
     content: string::String,
     external_index: u128,
-    reference: Option<ID>,
+    references: Option<vector<ID>>,
     verified: bool,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -1087,7 +1087,7 @@ public entry fun publish_data_item_verification(
         content: content,
         sequence_index: next_index,
         external_index: external_index,
-        reference: reference,
+        references: references,
         verified: verified,
         prev_data_item_verification_chain_id:
             verification_chain.last_data_item_verification_id,
@@ -1185,7 +1185,7 @@ public entry fun publish_data_item_verification(
             content: verification.content,
             sequence_index: verification.sequence_index,
             external_index: verification.external_index,
-            reference: verification.reference,
+            references: verification.references,
             verified: verification.verified,
             prev_data_item_verification_chain_id:
                 verification.prev_data_item_verification_chain_id,

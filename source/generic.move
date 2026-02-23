@@ -2,7 +2,6 @@ module sendit_messenger::generic_store;
 
 use iota::clock::Clock;
 use iota::event;
-use iota::table::{Self, Table};
 use iota::tx_context::sender;
 use std::string;
 
@@ -17,12 +16,13 @@ const E_INVALID_DATATYPE: u64 = 1001;
 const E_CANNOT_REMOVE_LAST_OWNER: u64 = 1002;
 const E_CANNOT_REMOVE_SELF: u64 = 1003;
 const E_OWNER_NOT_FOUND: u64 = 1004;
-const E_INVALID_CONTAINER: u64 = 1005;
-const E_INVALID_DATAITEM: u64 = 1006;
-const E_INVALID_VERIFICATION_SENDER: u64 = 1007;
-const E_VERIFICATION_ALREADY_SUBMITTED: u64 = 1008;
-const E_PARENT_MISMATCH: u64 = 1009;
-const E_CHILD_MISMATCH: u64 = 1010;
+const E_NO_ACTIVE_OWNERS: u64 = 1005;
+const E_INVALID_CONTAINER: u64 = 1006;
+const E_INVALID_DATAITEM: u64 = 1007;
+const E_INVALID_VERIFICATION_SENDER: u64 = 1008;
+const E_VERIFICATION_ALREADY_SUBMITTED: u64 = 1009;
+const E_PARENT_MISMATCH: u64 = 1010;
+const E_CHILD_MISMATCH: u64 = 1011;
 
 // ==========================
 // CHAINS
@@ -129,7 +129,7 @@ public struct Container has key, store {
     container_parent_id: Option<ID>,
     external_id: string::String,
     creator: Creator,
-    owners: Table<address, Owner>,
+    owners: vector<Owner>,
     owners_active_count: u32,
     name: string::String,
     description: string::String,
@@ -617,7 +617,7 @@ public entry fun create_container(
     let mut container = Container {
         id: object::new(ctx),
         container_parent_id: option::none(),
-        owners: table::new<address, Owner>(ctx),
+        owners: vector::empty<Owner>(),
         owners_active_count: 1,
         external_id: external_id,
         creator: creator_container,
@@ -659,7 +659,7 @@ public entry fun create_container(
 
     let owner_id = object::id(&owner);
 
-    table::add(&mut container.owners, creator_owner_addr, owner);
+    vector::push_back(&mut container.owners, owner);
     container.last_owner_id = option::some(owner_id);
 
     // Update chain
@@ -721,15 +721,12 @@ public entry fun create_container(
             prev_id: option::none(),
         };
 
-        let mut owners_vec = vector::empty<OwnerAddedEvent>();
-        vector::push_back(&mut owners_vec, owner_event);
-
         event::emit(ContainerCreatedEvent {
             object_id: container_id,
             container_parent_id: option::none(),
             external_id: container.external_id,
             creator: creator_event,
-            owners: owners_vec,
+            owners: vector::singleton(owner_event),
             owners_active_count: 1,
             name: container.name,
             description: container.description,
@@ -1349,89 +1346,106 @@ public entry fun add_owner(
     let updater_addr = option::some(caller_addr);
     let updater_timestamp_ms = option::some(timestamp_ms);
 
-    // Check if owner exists in table
-    let owner_exists = table::contains(&container.owners, new_owner);
+    let len = vector::length(&container.owners);
+    let mut i = 0;
+    let mut found = false;
 
-    if (owner_exists) {
-        let owner_ref = table::borrow_mut(&mut container.owners, new_owner);
-        let was_removed = owner_ref.removed;
+    while (i < len) {
+        let owner = vector::borrow_mut(&mut container.owners, i);
 
-        let old_creator = Creator {
-            creator_addr: owner_ref.creator.creator_addr,
-            creator_update_addr: owner_ref.creator.creator_update_addr,
-            creator_timestamp_ms: owner_ref.creator.creator_timestamp_ms,
-            creator_update_timestamp_ms: owner_ref.creator.creator_update_timestamp_ms,
-        };
+        if (owner.addr == new_owner) {
+            let was_removed = owner.removed;
 
-        let owner_id = object::id(owner_ref);
-        let owner_prev_id = owner_ref.prev_id;
-
-        let audit = OwnerAudit {
-            id: object::new(ctx),
-            object_id: owner_id,
-            container_id: container_id,
-            creator: old_creator,
-            addr: owner_ref.addr,
-            role: owner_ref.role,
-            removed: owner_ref.removed,
-        };
-
-        if (was_removed) {
-            owner_ref.removed = false;
-            container.owners_active_count = container.owners_active_count + 1;
-        };
-
-        owner_ref.role = role;
-        owner_ref.creator.creator_update_addr = updater_addr;
-        owner_ref.creator.creator_update_timestamp_ms = updater_timestamp_ms;
-
-        if (event_add && was_removed) {
-            let new_creator_event = CreatorEvent {
-                creator_addr: owner_ref.creator.creator_addr,
-                creator_update_addr: updater_addr,
-                creator_timestamp_ms: owner_ref.creator.creator_timestamp_ms,
-                creator_update_timestamp_ms: updater_timestamp_ms,
+            let old_creator = Creator {
+                creator_addr: owner.creator.creator_addr,
+                creator_update_addr: owner.creator.creator_update_addr,
+                creator_timestamp_ms: owner.creator.creator_timestamp_ms,
+                creator_update_timestamp_ms: owner.creator.creator_update_timestamp_ms,
             };
 
-            event::emit(OwnerAddedEvent {
+            let owner_id = object::id(owner);
+            let owner_prev_id = owner.prev_id;
+
+            let audit = OwnerAudit {
+                id: object::new(ctx),
+
                 object_id: owner_id,
                 container_id: container_id,
-                creator: new_creator_event,
-                addr: owner_ref.addr,
-                role: owner_ref.role,
-                removed: owner_ref.removed,
-                sequence_index: owner_ref.sequence_index,
-                prev_id: owner_prev_id,
-            });
+
+                creator: old_creator,
+
+                addr: owner.addr,
+                role: owner.role,
+                removed: owner.removed,
+            };
+
+            if (was_removed) {
+                owner.removed = false;
+                container.owners_active_count = container.owners_active_count + 1;
+            };
+
+            owner.role = role;
+            owner.creator.creator_update_addr = updater_addr;
+            owner.creator.creator_update_timestamp_ms = updater_timestamp_ms;
+
+            found = true;
+
+            if (event_add && was_removed) {
+                let new_creator_event = CreatorEvent {
+                    creator_addr: owner.creator.creator_addr,
+                    creator_update_addr: updater_addr,
+                    creator_timestamp_ms: owner.creator.creator_timestamp_ms,
+                    creator_update_timestamp_ms: updater_timestamp_ms,
+                };
+
+                event::emit(OwnerAddedEvent {
+                    object_id: owner_id,
+                    container_id: container_id,
+
+                    creator: new_creator_event,
+
+                    addr: owner.addr,
+                    role: owner.role,
+                    removed: owner.removed,
+
+                    sequence_index: owner.sequence_index,
+                    prev_id: owner_prev_id,
+                });
+            };
+
+            create_update_record(
+                update_chain,
+                container,
+                container_id,
+                object::id(&audit),
+                caller_addr,
+                timestamp_ms,
+                string::utf8(b"owner_audit"),
+                1,
+                ctx,
+            );
+
+            create_update_record(
+                update_chain,
+                container,
+                container_id,
+                owner_id,
+                caller_addr,
+                timestamp_ms,
+                string::utf8(b"owner"),
+                2,
+                ctx,
+            );
+
+            transfer::share_object(audit);
+
+            break
         };
 
-        create_update_record(
-            update_chain,
-            container,
-            container_id,
-            object::id(&audit),
-            caller_addr,
-            timestamp_ms,
-            string::utf8(b"owner_audit"),
-            1,
-            ctx,
-        );
+        i = i + 1;
+    };
 
-        create_update_record(
-            update_chain,
-            container,
-            container_id,
-            owner_id,
-            caller_addr,
-            timestamp_ms,
-            string::utf8(b"owner"),
-            2,
-            ctx,
-        );
-
-        transfer::share_object(audit);
-    } else {
-        // Add new owner
+    if (!found) {
         let next_index = add_with_wrap(container.last_owner_index, 1);
         container.last_owner_index = next_index;
 
@@ -1471,7 +1485,7 @@ public entry fun add_owner(
             ctx,
         );
 
-        table::add(&mut container.owners, new_owner, owner);
+        vector::push_back(&mut container.owners, owner);
 
         if (event_add) {
             let creator_event = CreatorEvent {
@@ -1484,10 +1498,13 @@ public entry fun add_owner(
             event::emit(OwnerAddedEvent {
                 object_id: owner_id,
                 container_id: container_id,
+
                 creator: creator_event,
+
                 addr: new_owner,
                 role: role,
                 removed: false,
+
                 sequence_index: next_index,
                 prev_id: owner_prev_id,
             });
@@ -1526,94 +1543,108 @@ public entry fun remove_owner(
     let updater_addr = option::some(caller_addr);
     let update_timestamp_ms = option::some(timestamp_ms);
 
-    // Check if owner exists in the table
-    let owner_exists = table::contains(&container.owners, owner_addr_remove);
-    assert!(owner_exists, E_OWNER_NOT_FOUND);
+    let len = vector::length(&container.owners);
+    let mut i = 0;
+    let mut found = false;
 
-    let owner_ref = table::borrow_mut(&mut container.owners, owner_addr_remove);
+    while (i < len) {
+        let owner = vector::borrow_mut(&mut container.owners, i);
 
-    // Cannot remove self
-    assert!(caller_addr != owner_addr_remove, E_CANNOT_REMOVE_SELF);
+        if (owner.addr == owner_addr_remove) {
+            // Cannot remove self
+            assert!(caller_addr != owner_addr_remove, E_CANNOT_REMOVE_SELF);
 
-    // Cannot remove already removed owner
-    assert!(!owner_ref.removed, E_OWNER_NOT_FOUND);
+            if (owner.removed) {
+                abort E_OWNER_NOT_FOUND
+            };
 
-    let old_creator = Creator {
-        creator_addr: owner_ref.creator.creator_addr,
-        creator_update_addr: owner_ref.creator.creator_update_addr,
-        creator_timestamp_ms: owner_ref.creator.creator_timestamp_ms,
-        creator_update_timestamp_ms: owner_ref.creator.creator_update_timestamp_ms,
-    };
+            let old_creator = Creator {
+                creator_addr: owner.creator.creator_addr,
+                creator_update_addr: owner.creator.creator_update_addr,
+                creator_timestamp_ms: owner.creator.creator_timestamp_ms,
+                creator_update_timestamp_ms: owner.creator.creator_update_timestamp_ms,
+            };
 
-    let owner_id = object::id(owner_ref);
-    let owner_prev_id = owner_ref.prev_id;
+            let owner_id = object::id(owner);
+            let owner_prev_id = owner.prev_id;
 
-    let audit = OwnerAudit {
-        id: object::new(ctx),
-        object_id: owner_id,
-        container_id: container_id,
-        creator: old_creator,
-        addr: owner_ref.addr,
-        role: owner_ref.role,
-        removed: owner_ref.removed,
-    };
+            let audit = OwnerAudit {
+                id: object::new(ctx),
 
-    // Mark owner as removed
-    owner_ref.removed = true;
-    owner_ref.creator.creator_update_addr = updater_addr;
-    owner_ref.creator.creator_update_timestamp_ms = update_timestamp_ms;
+                object_id: owner_id,
+                container_id: container_id,
 
-    container.owners_active_count = container.owners_active_count - 1;
+                creator: old_creator,
 
-    // Emit event if configured
-    if (event_config_ref.event_remove) {
-        let new_creator_event = CreatorEvent {
-            creator_addr: owner_ref.creator.creator_addr,
-            creator_update_addr: updater_addr,
-            creator_timestamp_ms: owner_ref.creator.creator_timestamp_ms,
-            creator_update_timestamp_ms: update_timestamp_ms,
+                addr: owner.addr,
+                role: owner.role,
+                removed: owner.removed,
+            };
+
+            owner.removed = true;
+            owner.creator.creator_update_addr = updater_addr;
+            owner.creator.creator_update_timestamp_ms = update_timestamp_ms;
+
+            container.owners_active_count = container.owners_active_count - 1;
+            found = true;
+
+            if (event_config_ref.event_remove) {
+                let new_creator_event = CreatorEvent {
+                    creator_addr: owner.creator.creator_addr,
+                    creator_update_addr: updater_addr,
+                    creator_timestamp_ms: owner.creator.creator_timestamp_ms,
+                    creator_update_timestamp_ms: update_timestamp_ms,
+                };
+
+                event::emit(OwnerRemovedEvent {
+                    object_id: owner_id,
+                    container_id: container_id,
+
+                    creator: new_creator_event,
+
+                    addr: owner.addr,
+                    role: owner.role,
+                    removed: owner.removed,
+
+                    sequence_index: owner.sequence_index,
+                    prev_id: owner_prev_id,
+                });
+            };
+
+            create_update_record(
+                update_chain,
+                container,
+                container_id,
+                object::id(&audit),
+                caller_addr,
+                timestamp_ms,
+                string::utf8(b"owner_audit"),
+                1,
+                ctx,
+            );
+
+            create_update_record(
+                update_chain,
+                container,
+                container_id,
+                owner_id,
+                caller_addr,
+                timestamp_ms,
+                string::utf8(b"owner"),
+                2,
+                ctx,
+            );
+
+            transfer::share_object(audit);
+
+            break;
         };
 
-        event::emit(OwnerRemovedEvent {
-            object_id: owner_id,
-            container_id: container_id,
-            creator: new_creator_event,
-            addr: owner_ref.addr,
-            role: owner_ref.role,
-            removed: owner_ref.removed,
-            sequence_index: owner_ref.sequence_index,
-            prev_id: owner_prev_id,
-        });
+        i = i + 1;
     };
 
-    // Create audit and update records
-    create_update_record(
-        update_chain,
-        container,
-        container_id,
-        object::id(&audit),
-        caller_addr,
-        timestamp_ms,
-        string::utf8(b"owner_audit"),
-        1,
-        ctx,
-    );
+    assert!(found, E_OWNER_NOT_FOUND);
 
-    create_update_record(
-        update_chain,
-        container,
-        container_id,
-        owner_id,
-        caller_addr,
-        timestamp_ms,
-        string::utf8(b"owner"),
-        2,
-        ctx,
-    );
-
-    transfer::share_object(audit);
-
-    // Final container update
     create_update_record(
         update_chain,
         container,
@@ -2012,7 +2043,6 @@ assert!(
     transfer::share_object(audit);
 }
 
-/*
 public entry fun update_container_owners_active_count(
     update_chain: &mut UpdateChain,
     container: &mut Container,
@@ -2022,15 +2052,11 @@ public entry fun update_container_owners_active_count(
     let permission_ref = &container.permission;
     assert_owner(container, permission_ref.public_update_container, ctx);
 
-    let mut active: u32 = 0;
-
-    // Iterate over all owners in the table
-    let keys = table::keys(&container.owners);
-    let len = vector::length(&keys);
+    let len = vector::length(&container.owners);
     let mut i = 0;
+    let mut active: u32 = 0;
     while (i < len) {
-        let key = *vector::borrow(&keys, i);
-        let owner = table::borrow(&container.owners, key);
+        let owner = vector::borrow(&container.owners, i);
         if (!owner.removed) {
             active = active + 1;
         };
@@ -2055,7 +2081,7 @@ public entry fun update_container_owners_active_count(
         2,
         ctx,
     );
-}*/
+}
 
 fun create_update_record(
     update_chain: &mut UpdateChain,
@@ -2123,19 +2149,18 @@ fun create_update_record(
 fun assert_owner(container: &Container, asserted: bool, ctx: &TxContext) {
     if (!asserted) {
         let caller_addr = sender(ctx);
-
-        // Check if the owners table contains the caller address
-        if (table::contains(&container.owners, caller_addr)) {
-            let owner_ref = table::borrow(&container.owners, caller_addr);
-            
-            // Explicitly verify the address in the owner object matches
-            if (!owner_ref.removed && owner_ref.addr == caller_addr) {
-                return // Authorized
-            }
+        let len = vector::length(&container.owners);
+        let mut i = 0;
+        while (i < len) {
+            let owner = vector::borrow(&container.owners, i);
+            if (!owner.removed && owner.addr == caller_addr) {
+                return // Authorized, exit early
+            };
+            i = i + 1;
         };
 
-        // If we get here, caller is not an active owner
-        abort E_NOT_OWNER
+        // If we get here, no owner matched
+        abort E_NOT_OWNER;
     }
 }
 

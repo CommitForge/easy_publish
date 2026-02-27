@@ -23,6 +23,8 @@ const E_INVALID_VERIFICATION_SENDER: u64 = 1007;
 const E_VERIFICATION_ALREADY_SUBMITTED: u64 = 1008;
 const E_PARENT_MISMATCH: u64 = 1009;
 const E_CHILD_MISMATCH: u64 = 1010;
+const E_DUPLICATE_RECIPIENT: u64 = 1011;
+const E_DUPLICATE_REFERENCE: u64 = 1012;
 
 // ==========================
 // CHAINS
@@ -892,6 +894,16 @@ public entry fun publish_data_item(
     let container_id = object::id(container);
     assert!(data_type.container_id == container_id, E_INVALID_DATATYPE);
 
+    if (option::is_some(&recipients)) {
+        let recs: &vector<address> = option::borrow(&recipients);
+        assert_no_duplicate_address(recs, E_DUPLICATE_RECIPIENT);
+    };
+
+    if (option::is_some(&references)) {
+        let refs: &vector<ID> = option::borrow(&references);
+        assert_no_duplicate_id(refs, E_DUPLICATE_REFERENCE);
+    };
+
     let data_type_id = object::id(data_type);
     let next_index = add_with_wrap(container.last_data_item_index, 1);
     let creator_addr = sender(ctx);
@@ -1009,6 +1021,16 @@ public entry fun publish_data_item_verification(
 
     let required_recipients = option::borrow(&data_item.recipients);
     assert!(vector::contains(required_recipients, &sender_addr), E_INVALID_VERIFICATION_SENDER);
+
+    if (option::is_some(&recipients)) {
+        let recs: &vector<address> = option::borrow(&recipients);
+        assert_no_duplicate_address(recs, E_DUPLICATE_RECIPIENT);
+    };
+
+    if (option::is_some(&references)) {
+        let refs: &vector<ID> = option::borrow(&references);
+        assert_no_duplicate_id(refs, E_DUPLICATE_REFERENCE);
+    };
 
     // --- no double submission (FIXED) ---
     let already_submitted =
@@ -1133,7 +1155,7 @@ public entry fun publish_data_item_verification(
             data_item.verified = option::none();
         };
     };
-    
+
     if (event_config_ref.event_publish) {
         let creator_event = CreatorEvent {
             creator_addr: sender_addr,
@@ -2114,6 +2136,39 @@ fun clone_vector_address(src: &vector<address>): vector<address> {
     };
     out
 }
+
+// Helper for addresses
+public fun assert_no_duplicate_address(addrs: &vector<address>, err_code: u64) {
+    let len = vector::length(addrs);
+    let mut i = 0;
+    while (i < len) {
+        let mut j = i + 1;
+        let addr_i = *vector::borrow(addrs, i);
+        while (j < len) {
+            let addr_j = *vector::borrow(addrs, j);
+            assert!(addr_i != addr_j, err_code);
+            j = j + 1;
+        };
+        i = i + 1;
+    };
+}
+
+// Helper for IDs
+public fun assert_no_duplicate_id(ids: &vector<ID>, err_code: u64) {
+    let len = vector::length(ids);
+    let mut i = 0;
+    while (i < len) {
+        let mut j = i + 1;
+        let id_i = *vector::borrow(ids, i);
+        while (j < len) {
+            let id_j = *vector::borrow(ids, j);
+            assert!(id_i != id_j, err_code);
+            j = j + 1;
+        };
+        i = i + 1;
+    };
+}
+
 /*
 fun clone_vector_id(src: &vector<ID>): vector<ID> {
     let mut out = vector::empty<ID>();

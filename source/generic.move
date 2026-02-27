@@ -182,13 +182,12 @@ public struct DataItem has key, store {
     sequence_index: u128,
     external_index: u128,
     references: Option<vector<ID>>,
-
     // Verification tracking
     verification_success_addresses: Option<vector<address>>,
     verification_failure_addresses: Option<vector<address>>,
     verified: Option<bool>,
-verification_success_data_item: Option<vector<ID>>, 
-verification_failure_data_item: Option<vector<ID>>,
+    verification_success_data_item: Option<vector<ID>>,
+    verification_failure_data_item: Option<vector<ID>>,
     prev_data_item_chain_id: Option<ID>,
     prev_id: Option<ID>,
     prev_data_type_item_id: Option<ID>,
@@ -196,31 +195,24 @@ verification_failure_data_item: Option<vector<ID>>,
 
 public struct DataItemVerification has key, store {
     id: UID,
-
     // Scope
     container_id: ID,
     data_item_id: ID,
-
     // External linkage
     external_id: string::String,
-
     // Creator
     creator: Creator,
     recipients: Option<vector<address>>,
-
     // Metadata
     name: string::String,
     description: string::String,
     content: string::String,
     sequence_index: u128,
     external_index: u128,
-
     // Target reference
     references: Option<vector<ID>>,
-
     // Verification result
     verified: bool,
-
     // Chain pointers
     prev_data_item_verification_chain_id: Option<ID>,
     prev_id: Option<ID>,
@@ -335,12 +327,11 @@ public struct DataItemPublishedEvent has copy, drop {
     sequence_index: u128,
     external_index: u128,
     references: Option<vector<ID>>,
-
     verification_success_addresses: Option<vector<address>>,
     verification_failure_addresses: Option<vector<address>>,
     verified: Option<bool>,
-verification_success_data_item: Option<vector<ID>>, 
-verification_failure_data_item: Option<vector<ID>>,
+    verification_success_data_item: Option<vector<ID>>,
+    verification_failure_data_item: Option<vector<ID>>,
     prev_data_item_chain_id: Option<ID>,
     prev_id: Option<ID>,
     prev_data_type_item_id: Option<ID>,
@@ -435,46 +426,35 @@ public struct ContainerLinkUpdatedEvent has copy, drop {
 
 public struct ContainerAudit has key, store {
     id: UID,
-
     object_id: ID,
     container_parent_id: Option<ID>,
     external_id: string::String,
-
     creator: Creator,
-
     name: string::String,
     description: string::String,
     content: string::String,
-
     specification: Specification,
 }
 
 public struct DataTypeAudit has key, store {
     id: UID,
-
     object_id: ID,
     container_id: ID,
     external_id: string::String,
-
     creator: Creator,
-
     name: string::String,
     description: string::String,
     content: string::String,
-
     specification: Specification,
 }
 
 public struct ContainerChildLinkAudit has key, store {
     id: UID,
-
     object_id: ID,
     container_parent_id: ID,
     container_child_id: ID,
     external_id: string::String,
-
     creator: Creator,
-
     name: string::String,
     description: string::String,
     content: string::String,
@@ -482,12 +462,9 @@ public struct ContainerChildLinkAudit has key, store {
 
 public struct OwnerAudit has key, store {
     id: UID,
-
     object_id: ID,
     container_id: ID,
-
     creator: Creator,
-
     addr: address,
     role: string::String,
     removed: bool,
@@ -645,7 +622,7 @@ public entry fun create_container(
     };
 
     let container_id = object::id(&container);
-     // Owner object
+    // Owner object
     let owner = Owner {
         id: object::new(ctx),
         container_id: container_id,
@@ -942,13 +919,12 @@ public entry fun publish_data_item(
         sequence_index: next_index,
         external_index: external_index,
         references: references,
-        
         // verification fields
         verification_success_addresses: option::none(),
         verification_failure_addresses: option::none(),
         verified: option::none(),
-verification_success_data_item: option::none(), 
-verification_failure_data_item: option::none(),
+        verification_success_data_item: option::none(),
+        verification_failure_data_item: option::none(),
         prev_data_item_chain_id: data_item_chain_id,
         prev_id: container.last_data_item_id,
         prev_data_type_item_id: data_type.last_data_item_id,
@@ -990,8 +966,8 @@ verification_failure_data_item: option::none(),
             verification_success_addresses: data_item.verification_success_addresses,
             verification_failure_addresses: data_item.verification_failure_addresses,
             verified: data_item.verified,
-            verification_success_data_item: data_item.verification_success_data_item, 
-verification_failure_data_item: data_item.verification_failure_data_item,
+            verification_success_data_item: data_item.verification_success_data_item,
+            verification_failure_data_item: data_item.verification_failure_data_item,
             prev_data_item_chain_id: data_item_chain_id,
             prev_id: data_item.prev_id,
             prev_data_type_item_id: data_item.prev_data_type_item_id,
@@ -1025,19 +1001,14 @@ public entry fun publish_data_item_verification(
     let container_id = object::id(container);
     let data_item_id = object::id(data_item);
 
-    assert!(data_item.container_id == container_id, E_INVALID_DATAITEM);
+    // --- we should allow/trust the recipient to decide, into which container/data type he will store his own verification ----
+    //assert!(data_item.container_id == container_id, E_INVALID_DATAITEM);
 
     // --- sender must be recipient ---
-    assert!(
-        option::is_some(&data_item.recipients),
-        E_INVALID_VERIFICATION_SENDER
-    );
+    assert!(option::is_some(&data_item.recipients), E_INVALID_VERIFICATION_SENDER);
 
     let required_recipients = option::borrow(&data_item.recipients);
-    assert!(
-        vector::contains(required_recipients, &sender_addr),
-        E_INVALID_VERIFICATION_SENDER
-    );
+    assert!(vector::contains(required_recipients, &sender_addr), E_INVALID_VERIFICATION_SENDER);
 
     // --- no double submission (FIXED) ---
     let already_submitted =
@@ -1056,16 +1027,14 @@ public entry fun publish_data_item_verification(
     assert!(!already_submitted, E_VERIFICATION_ALREADY_SUBMITTED);
 
     let timestamp_ms = clock.timestamp_ms();
-    let next_index =
-        add_with_wrap(container.last_data_item_verification_index, 1);
+    let next_index = add_with_wrap(container.last_data_item_verification_index, 1);
 
     // --- informational recipients ---
-    let info_recipients =
-        if (option::is_some(&recipients)) {
-            option::some(clone_vector_address(option::borrow(&recipients)))
-        } else {
-            option::none()
-        };
+    let info_recipients = if (option::is_some(&recipients)) {
+        option::some(clone_vector_address(option::borrow(&recipients)))
+    } else {
+        option::none()
+    };
 
     let creator = Creator {
         creator_addr: sender_addr,
@@ -1089,8 +1058,7 @@ public entry fun publish_data_item_verification(
         external_index: external_index,
         references: references,
         verified: verified,
-        prev_data_item_verification_chain_id:
-            verification_chain.last_data_item_verification_id,
+        prev_data_item_verification_chain_id: verification_chain.last_data_item_verification_id,
         prev_id: container.last_data_item_verification_id,
     };
 
@@ -1115,12 +1083,12 @@ public entry fun publish_data_item_verification(
 
         vector::push_back(
             option::borrow_mut(&mut data_item.verification_success_addresses),
-            sender_addr
+            sender_addr,
         );
 
         vector::push_back(
             option::borrow_mut(&mut data_item.verification_success_data_item),
-            verification_id
+            verification_id,
         );
     } else {
         if (!option::is_some(&data_item.verification_failure_addresses)) {
@@ -1132,12 +1100,12 @@ public entry fun publish_data_item_verification(
 
         vector::push_back(
             option::borrow_mut(&mut data_item.verification_failure_addresses),
-            sender_addr
+            sender_addr,
         );
 
         vector::push_back(
             option::borrow_mut(&mut data_item.verification_failure_data_item),
-            verification_id
+            verification_id,
         );
     };
 
@@ -1145,15 +1113,13 @@ public entry fun publish_data_item_verification(
 
     let required_count = vector::length(required_recipients);
 
-    let success_count =
-        if (option::is_some(&data_item.verification_success_addresses)) {
-            vector::length(option::borrow(&data_item.verification_success_addresses))
-        } else { 0 };
+    let success_count = if (option::is_some(&data_item.verification_success_addresses)) {
+        vector::length(option::borrow(&data_item.verification_success_addresses))
+    } else { 0 };
 
-    let failure_count =
-        if (option::is_some(&data_item.verification_failure_addresses)) {
-            vector::length(option::borrow(&data_item.verification_failure_addresses))
-        } else { 0 };
+    let failure_count = if (option::is_some(&data_item.verification_failure_addresses)) {
+        vector::length(option::borrow(&data_item.verification_failure_addresses))
+    } else { 0 };
 
     if (failure_count > 0) {
         data_item.verified = option::some(false);
@@ -1165,7 +1131,6 @@ public entry fun publish_data_item_verification(
 
     // --- event (FIXED recipients handling) ---
     if (event_config_ref.event_publish) {
-
         let creator_event = CreatorEvent {
             creator_addr: sender_addr,
             creator_update_addr: option::none(),
@@ -1187,8 +1152,7 @@ public entry fun publish_data_item_verification(
             external_index: verification.external_index,
             references: verification.references,
             verified: verification.verified,
-            prev_data_item_verification_chain_id:
-                verification.prev_data_item_verification_chain_id,
+            prev_data_item_verification_chain_id: verification.prev_data_item_verification_chain_id,
             prev_id: verification.prev_id,
         });
     };
@@ -1368,12 +1332,9 @@ public entry fun add_owner(
 
             let audit = OwnerAudit {
                 id: object::new(ctx),
-
                 object_id: owner_id,
                 container_id: container_id,
-
                 creator: old_creator,
-
                 addr: owner.addr,
                 role: owner.role,
                 removed: owner.removed,
@@ -1401,13 +1362,10 @@ public entry fun add_owner(
                 event::emit(OwnerAddedEvent {
                     object_id: owner_id,
                     container_id: container_id,
-
                     creator: new_creator_event,
-
                     addr: owner.addr,
                     role: owner.role,
                     removed: owner.removed,
-
                     sequence_index: owner.sequence_index,
                     prev_id: owner_prev_id,
                 });
@@ -1498,13 +1456,10 @@ public entry fun add_owner(
             event::emit(OwnerAddedEvent {
                 object_id: owner_id,
                 container_id: container_id,
-
                 creator: creator_event,
-
                 addr: new_owner,
                 role: role,
                 removed: false,
-
                 sequence_index: next_index,
                 prev_id: owner_prev_id,
             });
@@ -1570,12 +1525,9 @@ public entry fun remove_owner(
 
             let audit = OwnerAudit {
                 id: object::new(ctx),
-
                 object_id: owner_id,
                 container_id: container_id,
-
                 creator: old_creator,
-
                 addr: owner.addr,
                 role: owner.role,
                 removed: owner.removed,
@@ -1599,13 +1551,10 @@ public entry fun remove_owner(
                 event::emit(OwnerRemovedEvent {
                     object_id: owner_id,
                     container_id: container_id,
-
                     creator: new_creator_event,
-
                     addr: owner.addr,
                     role: owner.role,
                     removed: owner.removed,
-
                     sequence_index: owner.sequence_index,
                     prev_id: owner_prev_id,
                 });
@@ -1702,17 +1651,13 @@ public entry fun update_container(
 
     let audit = ContainerAudit {
         id: object::new(ctx),
-
         object_id: container_id,
         container_parent_id: container.container_parent_id,
         external_id: container.external_id,
-
         creator: old_creator_event,
-
         name: container.name,
         description: container.description,
         content: container.content,
-
         specification: old_spec_copy,
     };
 
@@ -1754,13 +1699,10 @@ public entry fun update_container(
             object_id: container_id,
             container_parent_id: container.container_parent_id,
             external_id: container.external_id,
-
             creator: new_creator_event,
-
             name: container.name,
             description: container.description,
             content: container.content,
-
             specification: new_spec_event,
         });
     };
@@ -1837,17 +1779,13 @@ public entry fun update_data_type(
 
     let audit = DataTypeAudit {
         id: object::new(ctx),
-
         object_id: data_type_id,
         container_id: data_type.container_id,
         external_id: data_type.external_id,
-
         creator: old_creator_event,
-
         name: data_type.name,
         description: data_type.description,
         content: data_type.content,
-
         specification: old_spec_event,
     };
 
@@ -1889,13 +1827,10 @@ public entry fun update_data_type(
             object_id: data_type_id,
             container_id: data_type.container_id,
             external_id: data_type.external_id,
-
             creator: new_creator_event,
-
             name: data_type.name,
             description: data_type.description,
             content: data_type.content,
-
             specification: new_spec_event,
         });
     };
@@ -1908,7 +1843,7 @@ public entry fun update_data_type(
         caller_addr,
         timestamp_ms,
         string::utf8(b"data_type_audit"),
-        1, 
+        1,
         ctx,
     );
 
@@ -1920,7 +1855,7 @@ public entry fun update_data_type(
         caller_addr,
         timestamp_ms,
         string::utf8(b"data_type"),
-        2, 
+        2,
         ctx,
     );
 
@@ -1943,14 +1878,8 @@ public entry fun update_container_child_link(
     let container_parent_id = object::id(container_parent);
     let container_child_id = object::id(container_child);
     assert!(container_parent_id != container_child_id, E_INVALID_CONTAINER);
-assert!(
-    container_child_link.container_parent_id == container_parent_id,
-    E_PARENT_MISMATCH
-);
-assert!(
-    container_child_link.container_child_id == container_child_id,
-    E_CHILD_MISMATCH
-);
+    assert!(container_child_link.container_parent_id == container_parent_id, E_PARENT_MISMATCH);
+    assert!(container_child_link.container_child_id == container_child_id, E_CHILD_MISMATCH);
     let parent_permission_ref = &container_parent.permission;
     let child_permission_ref = &container_child.permission;
     assert_owner(container_parent, parent_permission_ref.public_attach_container_child, ctx);
@@ -1969,14 +1898,11 @@ assert!(
 
     let audit = ContainerChildLinkAudit {
         id: object::new(ctx),
-
         object_id: container_child_link_id,
         container_parent_id: container_child_link.container_parent_id,
         container_child_id: container_child_link.container_child_id,
         external_id: container_child_link.external_id,
-
         creator: old_creator,
-
         name: container_child_link.name,
         description: container_child_link.description,
         content: container_child_link.content,
@@ -2007,9 +1933,7 @@ assert!(
             container_parent_id: container_child_link.container_parent_id,
             container_child_id: container_child_link.container_child_id,
             external_id: container_child_link.external_id,
-
             creator: new_creator_event,
-
             name: container_child_link.name,
             description: container_child_link.description,
             content: container_child_link.content,
@@ -2036,7 +1960,7 @@ assert!(
         caller_addr,
         timestamp_ms,
         string::utf8(b"container_child_link"),
-        2, 
+        2,
         ctx,
     );
 

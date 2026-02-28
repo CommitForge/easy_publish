@@ -2159,7 +2159,7 @@ fun clone_vector_address(src: &vector<address>): vector<address> {
 }
 
 // Helper for addresses
-public fun assert_no_duplicate_address(addrs: &vector<address>, err_code: u64) {
+fun assert_no_duplicate_address(addrs: &vector<address>, err_code: u64) {
     let len = vector::length(addrs);
     let mut i = 0;
     while (i < len) {
@@ -2175,7 +2175,7 @@ public fun assert_no_duplicate_address(addrs: &vector<address>, err_code: u64) {
 }
 
 // Helper for IDs
-public fun assert_no_duplicate_id(ids: &vector<ID>, err_code: u64) {
+fun assert_no_duplicate_id(ids: &vector<ID>, err_code: u64) {
     let len = vector::length(ids);
     let mut i = 0;
     while (i < len) {

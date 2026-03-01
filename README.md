@@ -1,4 +1,4 @@
-# SendIt Messenger - Decentralized Content & Ownership Management
+# Easy Publish - Decentralized Content & Ownership Management
 
 SendIt Messenger is a decentralized content and ownership management system with full auditability. It allows multiple users to collaborate, track, and manage structured content in a permissioned and verifiable way.
 
